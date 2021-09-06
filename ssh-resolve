@@ -1,0 +1,81 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import lexer
+from pathlib import Path
+import sys
+
+
+ssh_lexer = lexer.Lexer({
+    'whitespace': r'\s+',
+    'double-quoted string': r'"([^"\\]|\\.)*"',
+    'comma': r',',
+    'comment': r'#[^\n]*(\n|$)'
+})
+
+
+def chunkify(text):
+    result = []
+    for token in ssh_lexer.tokens(text):
+        if token.kind in ('whitespace', 'comma', 'comment'):
+            continue
+        if token.kind == 'double-quoted string':
+            result.append(json.loads(token.text))
+        else:
+            result.append(token.text)
+
+    return result
+
+
+def collect_hostnames(file):
+    result = {}
+    current_aliases = None
+
+    for line_num, line in enumerate(file, 1):
+        chunks = chunkify(line)
+        if len(chunks) == 0:
+            continue
+
+        command, *args = chunks
+        command = command.lower()
+        if command == 'host':
+            current_aliases = args
+        elif command == 'hostname':
+            if current_aliases is None:
+                print('dangling HostName directive on line', line_num, file=sys.stderr)
+                continue
+            if len(args) != 1:
+                print('expected HostName to have 1 argument, but is has', len(args), file=sys.stderr)
+                continue
+            hostname, = args
+            for alias in current_aliases:
+                result[alias] = hostname
+    
+    return result
+
+
+def parse_options(args):
+    parser = argparse.ArgumentParser(description='Look up host name of ssh alias.')
+
+    parser.add_argument('alias', 
+                        help='ssh host alias from ssh config file')
+    parser.add_argument('--config', type=Path, default=Path('~/.ssh/config'),
+                        help='path to the ssh config file')
+
+    return parser.parse_args(args)
+
+
+if __name__ == '__main__':
+    options = parse_options(sys.argv[1:])
+    
+    config = options.config.expanduser()
+    with config.open() as file:
+        hostnames = collect_hostnames(file)
+
+    hostname = hostnames.get(options.alias)
+    if hostname is None:
+        print('There is no alias named', options.alias, 'in the ssh config file', config, file=sys.stderr)
+        sys.exit(1)
+
+    print(hostname)
