@@ -46,7 +46,7 @@ def collect_hostnames(file):
                 print('dangling HostName directive on line', line_num, file=sys.stderr)
                 continue
             if len(args) != 1:
-                print('expected HostName to have 1 argument, but is has', len(args), file=sys.stderr)
+                print('expected HostName to have 1 argument, but is has', len(args), 'on line', line_num, file=sys.stderr)
                 continue
             hostname, = args
             for alias in current_aliases:
